@@ -1,24 +1,22 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { DockerAPIV2Helper } from '../utils/dockerUtils';
 import { TagNode } from './tagNode';
 import { RootNode } from './rootNode';
+import { Icons } from '../utils/icons';
 
 export class RepositoryNode extends RootNode {
-    public readonly iconPath = {
-        light: vscode.Uri.file(path.join(__filename, '..', '..', '..', 'resources', 'light', 'Repository_16x.svg')),
-        dark: vscode.Uri.file(path.join(__filename, '..', '..', '..', 'resources', 'dark', 'Repository_16x.svg'))
-    };
     public readonly contextValue = 'repositoryNode';
     private _childrenCount = 0;
 
     constructor(
         label: string,
         private readonly client: DockerAPIV2Helper,
+        private readonly icons: Icons,
         onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined>,
         parent: RootNode
     ) {
         super(label, vscode.TreeItemCollapsibleState.Collapsed, onDidChangeTreeData, parent);
+        this.iconPath = icons.repository;
     }
 
     get childrenCount(): number {
@@ -28,7 +26,7 @@ export class RepositoryNode extends RootNode {
     async getChildren(): Promise<TagNode[]> {
         const response = await this.client.getTags(this.label as string);
         const tags = response?.tags ?? [];
-        const nodes = tags.map(tag => new TagNode(tag, this.label as string, this.client, this.onDidChangeTreeData, this));
+        const nodes = tags.map(tag => new TagNode(tag, this.label as string, this.client, this.icons, this.onDidChangeTreeData, this));
         nodes.sort(compareTags);
         this._childrenCount = nodes.length;
         return nodes;

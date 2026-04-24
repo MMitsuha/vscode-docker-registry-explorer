@@ -3,6 +3,7 @@ import { URL } from 'url';
 
 import { PrivateDockerExplorerProvider } from './explorer/dockerExplorer';
 import { CredentialStore } from './utils/credentialStore';
+import { Icons } from './utils/icons';
 import { LayerNode } from './models/layerNode';
 import { TagNode } from './models/tagNode';
 import { RegistryNode } from './models/registryNode';
@@ -10,7 +11,8 @@ import { RepositoryNode } from './models/repositoryNode';
 
 export function activate(context: vscode.ExtensionContext): void {
     const credentialStore = new CredentialStore(context);
-    const explorer = new PrivateDockerExplorerProvider(credentialStore);
+    const icons = new Icons(context.extensionUri);
+    const explorer = new PrivateDockerExplorerProvider(credentialStore, icons);
 
     context.subscriptions.push(
         vscode.window.registerTreeDataProvider('dockerRegistryExplorer', explorer),
