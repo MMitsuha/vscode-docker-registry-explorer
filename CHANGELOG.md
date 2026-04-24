@@ -1,5 +1,14 @@
 # Change Log
 
+## 0.2.1 - 2026-04-24
+
+### Fixed
+- Tree icons now load correctly. Paths were built from `__filename` with three `..` segments, which resolved outside the extension root after esbuild bundled everything into `dist/extension.js`. Icons are now resolved from `context.extensionUri`.
+
+### Added
+- `Docker Registry Explorer` output channel with timestamped logs at every error path: activation, command handlers, tree `getChildren`, HTTP requests (GET/HEAD/DELETE), `fetch` network errors, and `SecretStorage` failures. The channel auto-opens on the first error.
+- `Docker Registry Explorer: Show logs` command to open the output channel from the command palette.
+
 ## 0.2.0 - 2026-04-24
 
 ### Breaking
