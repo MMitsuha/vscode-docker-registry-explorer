@@ -4,50 +4,83 @@ import { URL } from 'url';
 import { PrivateDockerExplorerProvider } from './explorer/dockerExplorer';
 import { CredentialStore } from './utils/credentialStore';
 import { Icons } from './utils/icons';
+import { initLogger, log } from './utils/logger';
 import { LayerNode } from './models/layerNode';
 import { TagNode } from './models/tagNode';
 import { RegistryNode } from './models/registryNode';
 import { RepositoryNode } from './models/repositoryNode';
 
 export function activate(context: vscode.ExtensionContext): void {
-    const credentialStore = new CredentialStore(context);
-    const icons = new Icons(context.extensionUri);
-    const explorer = new PrivateDockerExplorerProvider(credentialStore, icons);
+    const logger = initLogger();
+    context.subscriptions.push({ dispose: () => logger.dispose() });
 
-    context.subscriptions.push(
-        vscode.window.registerTreeDataProvider('dockerRegistryExplorer', explorer),
+    try {
+        logger.info('Activating Docker Registry Explorer');
 
-        vscode.commands.registerCommand('dockerRegistryExplorer.refreshEntry', () => explorer.refresh()),
+        const credentialStore = new CredentialStore(context);
+        const icons = new Icons(context.extensionUri);
+        const explorer = new PrivateDockerExplorerProvider(credentialStore, icons);
 
-        vscode.commands.registerCommand('dockerRegistryExplorer.addEntry', () => addRegistry(credentialStore, explorer)),
+        context.subscriptions.push(
+            vscode.window.registerTreeDataProvider('dockerRegistryExplorer', explorer),
 
-        vscode.commands.registerCommand('dockerRegistryExplorer.registryNode.refreshEntry',
-            (node: RegistryNode) => node.refresh()),
+            registerCommand('dockerRegistryExplorer.refreshEntry',
+                async () => { explorer.refresh(); }),
 
-        vscode.commands.registerCommand('dockerRegistryExplorer.registryNode.deleteEntry',
-            (node: RegistryNode) => deleteRegistry(node, credentialStore, explorer)),
+            registerCommand('dockerRegistryExplorer.addEntry',
+                () => addRegistry(credentialStore, explorer)),
 
-        vscode.commands.registerCommand('dockerRegistryExplorer.repositoryNode.refreshEntry',
-            (node: RepositoryNode) => node.refresh()),
+            registerCommand('dockerRegistryExplorer.registryNode.refreshEntry',
+                async (node: RegistryNode) => { node.refresh(); }),
 
-        vscode.commands.registerCommand('dockerRegistryExplorer.tagNode.copyName',
-            (node: TagNode) => copyToClipboard(node.getImageName(), 'image name')),
+            registerCommand('dockerRegistryExplorer.registryNode.deleteEntry',
+                (node: RegistryNode) => deleteRegistry(node, credentialStore, explorer)),
 
-        vscode.commands.registerCommand('dockerRegistryExplorer.tagNode.pullImage',
-            (node: TagNode) => runDockerCommand(`docker pull ${node.getImageName()}`, 'pull image')),
+            registerCommand('dockerRegistryExplorer.repositoryNode.refreshEntry',
+                async (node: RepositoryNode) => { node.refresh(); }),
 
-        vscode.commands.registerCommand('dockerRegistryExplorer.tagNode.removeLocalImage',
-            (node: TagNode) => runDockerCommand(`docker rmi ${node.getImageName()}`, 'remove image')),
+            registerCommand('dockerRegistryExplorer.tagNode.copyName',
+                (node: TagNode) => copyToClipboard(node.getImageName(), 'image name')),
 
-        vscode.commands.registerCommand('dockerRegistryExplorer.tagNode.removeRemoteImage',
-            (node: TagNode) => deleteRemoteImage(node)),
+            registerCommand('dockerRegistryExplorer.tagNode.pullImage',
+                (node: TagNode) => runDockerCommand(`docker pull ${node.getImageName()}`, 'pull image')),
 
-        vscode.commands.registerCommand('dockerRegistryExplorer.layerNode.copyDigest',
-            (node: LayerNode) => copyToClipboard(node.layerItem.digest, 'digest value'))
-    );
+            registerCommand('dockerRegistryExplorer.tagNode.removeLocalImage',
+                (node: TagNode) => runDockerCommand(`docker rmi ${node.getImageName()}`, 'remove image')),
+
+            registerCommand('dockerRegistryExplorer.tagNode.removeRemoteImage',
+                (node: TagNode) => deleteRemoteImage(node)),
+
+            registerCommand('dockerRegistryExplorer.layerNode.copyDigest',
+                (node: LayerNode) => copyToClipboard(node.layerItem.digest, 'digest value')),
+
+            registerCommand('dockerRegistryExplorer.showLogs',
+                async () => { log().show(); })
+        );
+
+        logger.info(`Activation complete. ${credentialStore.listRegistries().length} registries loaded from globalState.`);
+    } catch (error) {
+        logger.error('Activation failed', error);
+        vscode.window.showErrorMessage(`Docker Registry Explorer failed to activate: ${formatError(error)}`);
+        throw error;
+    }
 }
 
-export function deactivate(): void {}
+export function deactivate(): void {
+    log().info('Deactivating');
+}
+
+function registerCommand(id: string, handler: (...args: any[]) => Promise<unknown>): vscode.Disposable {
+    return vscode.commands.registerCommand(id, async (...args: any[]) => {
+        log().info(`Command invoked: ${id}`);
+        try {
+            return await handler(...args);
+        } catch (error) {
+            log().error(`Command '${id}' threw`, error);
+            vscode.window.showErrorMessage(`${id}: ${formatError(error)}`);
+        }
+    });
+}
 
 async function addRegistry(store: CredentialStore, explorer: PrivateDockerExplorerProvider): Promise<void> {
     const regUrl = await vscode.window.showInputBox({
@@ -60,39 +93,39 @@ async function addRegistry(store: CredentialStore, explorer: PrivateDockerExplor
         return;
     }
 
-    try {
-        const url = new URL(regUrl).toString();
-        const authChoice = await vscode.window.showQuickPick(
-            [
-                { label: 'Anonymous', description: 'No authentication' },
-                { label: 'Basic', description: 'Username & password' }
-            ],
-            { ignoreFocusOut: true, placeHolder: `Authentication for ${url}` }
-        );
-        if (!authChoice) {
-            return;
-        }
+    const url = new URL(regUrl).toString();
+    log().info(`Adding registry ${url}`);
 
-        if (authChoice.label === 'Anonymous') {
-            await store.addRegistry(url);
-            explorer.refresh();
-            return;
-        }
-
-        const user = await vscode.window.showInputBox({ ignoreFocusOut: true, prompt: `Username for ${url}` });
-        if (!user) {
-            return;
-        }
-        const password = await vscode.window.showInputBox({ ignoreFocusOut: true, prompt: `Password for ${url}`, password: true });
-        if (!password) {
-            return;
-        }
-
-        await store.addRegistry(url, { user, password });
-        explorer.refresh();
-    } catch (error) {
-        vscode.window.showErrorMessage(`Failed to add registry: ${formatError(error)}`);
+    const authChoice = await vscode.window.showQuickPick(
+        [
+            { label: 'Anonymous', description: 'No authentication' },
+            { label: 'Basic', description: 'Username & password' }
+        ],
+        { ignoreFocusOut: true, placeHolder: `Authentication for ${url}` }
+    );
+    if (!authChoice) {
+        return;
     }
+
+    if (authChoice.label === 'Anonymous') {
+        await store.addRegistry(url);
+        log().info(`Registry added (anonymous): ${url}`);
+        explorer.refresh();
+        return;
+    }
+
+    const user = await vscode.window.showInputBox({ ignoreFocusOut: true, prompt: `Username for ${url}` });
+    if (!user) {
+        return;
+    }
+    const password = await vscode.window.showInputBox({ ignoreFocusOut: true, prompt: `Password for ${url}`, password: true });
+    if (!password) {
+        return;
+    }
+
+    await store.addRegistry(url, { user, password });
+    log().info(`Registry added (basic auth, user=${user}): ${url}`);
+    explorer.refresh();
 }
 
 async function deleteRegistry(node: RegistryNode, store: CredentialStore, explorer: PrivateDockerExplorerProvider): Promise<void> {
@@ -104,13 +137,10 @@ async function deleteRegistry(node: RegistryNode, store: CredentialStore, explor
     if (confirm !== 'Yes') {
         return;
     }
-    try {
-        await store.removeRegistry(node.key);
-        vscode.window.showInformationMessage(`Registry '${node.key}' removed.`);
-        explorer.refresh();
-    } catch (error) {
-        vscode.window.showErrorMessage(`Failed to remove registry: ${formatError(error)}`);
-    }
+    await store.removeRegistry(node.key);
+    log().info(`Registry removed: ${node.key}`);
+    vscode.window.showInformationMessage(`Registry '${node.key}' removed.`);
+    explorer.refresh();
 }
 
 async function deleteRemoteImage(node: TagNode): Promise<void> {
@@ -122,22 +152,20 @@ async function deleteRemoteImage(node: TagNode): Promise<void> {
     if (confirm !== 'Yes') {
         return;
     }
-    try {
-        const ok = await node.deleteFromRepository();
-        if (!ok) {
-            return;
-        }
-        const repo = node.parent as RepositoryNode | undefined;
-        if (!repo) {
-            return;
-        }
-        if (repo.childrenCount <= 1 && repo.parent) {
-            repo.parent.refresh();
-        } else {
-            repo.refresh();
-        }
-    } catch (error) {
-        vscode.window.showErrorMessage(`Failed to delete image: ${formatError(error)}`);
+    log().info(`Deleting remote image ${node.getImageName()}`);
+    const ok = await node.deleteFromRepository();
+    if (!ok) {
+        return;
+    }
+    log().info(`Deleted remote image ${node.getImageName()}`);
+    const repo = node.parent as RepositoryNode | undefined;
+    if (!repo) {
+        return;
+    }
+    if (repo.childrenCount <= 1 && repo.parent) {
+        repo.parent.refresh();
+    } else {
+        repo.refresh();
     }
 }
 

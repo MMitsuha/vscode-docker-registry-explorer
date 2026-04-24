@@ -1,4 +1,5 @@
 import { URL } from 'url';
+import { log } from './logger';
 
 export interface Tag {
     name: string;
@@ -68,7 +69,8 @@ export class DockerAPIV2Helper {
         }
 
         const url = this.buildUrl(`/v2/${this.encodeRepository(repository)}/manifests/${encodeURIComponent(digest)}`);
-        const response = await fetch(url, { method: 'DELETE', headers: this.headers() });
+        log().info(`DELETE ${url} (digest=${digest})`);
+        const response = await this.doFetch(url, { method: 'DELETE', headers: this.headers() });
 
         if (response.status === 202) {
             return true;
@@ -81,7 +83,8 @@ export class DockerAPIV2Helper {
 
     private async getManifestDigest(repository: string, reference: string): Promise<string | null> {
         const url = this.buildUrl(`/v2/${this.encodeRepository(repository)}/manifests/${encodeURIComponent(reference)}`);
-        const response = await fetch(url, {
+        log().info(`HEAD ${url}`);
+        const response = await this.doFetch(url, {
             method: 'HEAD',
             headers: this.headers({ accept: MANIFEST_ACCEPT_HEADER })
         });
@@ -94,15 +97,26 @@ export class DockerAPIV2Helper {
 
     private async request<T>(path: string, extra: { accept?: string } = {}): Promise<T | null> {
         const url = this.buildUrl(path);
-        const response = await fetch(url, { headers: this.headers(extra) });
+        log().info(`GET ${url}`);
+        const response = await this.doFetch(url, { headers: this.headers(extra) });
 
         if (response.status === 404) {
+            log().warn(`GET ${url} returned 404`);
             return null;
         }
         if (!response.ok) {
             throw new RegistryError(`GET ${url} returned ${response.status}.`, response.status);
         }
         return response.json() as Promise<T>;
+    }
+
+    private async doFetch(url: string, init: RequestInit): Promise<Response> {
+        try {
+            return await fetch(url, init);
+        } catch (error) {
+            log().error(`fetch ${init.method ?? 'GET'} ${url} failed`, error);
+            throw new RegistryError(`Network error contacting ${this.baseUrl}: ${formatError(error)}`);
+        }
     }
 
     private headers(extra: { accept?: string } = {}): Record<string, string> {
@@ -120,4 +134,8 @@ export class DockerAPIV2Helper {
     private encodeRepository(repository: string): string {
         return repository.split('/').map(encodeURIComponent).join('/');
     }
+}
+
+function formatError(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
 }

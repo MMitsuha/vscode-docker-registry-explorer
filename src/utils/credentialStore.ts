@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { log } from './logger';
 
 export interface RegistryCredentials {
     user: string;
@@ -35,13 +36,20 @@ export class CredentialStore {
     }
 
     async getCredentials(url: string): Promise<RegistryCredentials | undefined> {
-        const raw = await this.context.secrets.get(SECRET_PREFIX + url);
+        let raw: string | undefined;
+        try {
+            raw = await this.context.secrets.get(SECRET_PREFIX + url);
+        } catch (error) {
+            log().error(`SecretStorage.get failed for ${url}`, error);
+            return undefined;
+        }
         if (!raw) {
             return undefined;
         }
         try {
             return JSON.parse(raw) as RegistryCredentials;
-        } catch {
+        } catch (error) {
+            log().error(`Malformed credentials JSON for ${url}`, error);
             return undefined;
         }
     }

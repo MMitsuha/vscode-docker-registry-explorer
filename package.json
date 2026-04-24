@@ -97,6 +97,10 @@
             {
                 "command": "dockerRegistryExplorer.layerNode.copyDigest",
                 "title": "Copy digest"
+            },
+            {
+                "command": "dockerRegistryExplorer.showLogs",
+                "title": "Docker Registry Explorer: Show logs"
             }
         ],
         "menus": {
