@@ -1,5 +1,10 @@
 # Change Log
 
+## 0.2.2 - 2026-04-24
+
+### Fixed
+- Activation crash: `Icons` used class field initializers that called `this.themed(...)`, which runs before the constructor's parameter property `extensionUri` is assigned. With target `es2022` + `useDefineForClassFields`, field initializers execute first, so `vscode.Uri.joinPath(undefined, ...)` threw and blocked activation. Moved the initialization into the constructor body.
+
 ## 0.2.1 - 2026-04-24
 
 ### Fixed

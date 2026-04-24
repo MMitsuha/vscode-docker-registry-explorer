@@ -6,12 +6,17 @@ export interface ThemedIcon {
 }
 
 export class Icons {
-    constructor(private readonly extensionUri: vscode.Uri) {}
+    readonly registry: ThemedIcon;
+    readonly repository: ThemedIcon;
+    readonly image: ThemedIcon;
+    readonly layer: ThemedIcon;
 
-    readonly registry = this.themed('Registry_16x.svg');
-    readonly repository = this.themed('Repository_16x.svg');
-    readonly image = this.themed('Image_16x.svg');
-    readonly layer = this.themed('Layer_16x.svg');
+    constructor(private readonly extensionUri: vscode.Uri) {
+        this.registry = this.themed('Registry_16x.svg');
+        this.repository = this.themed('Repository_16x.svg');
+        this.image = this.themed('Image_16x.svg');
+        this.layer = this.themed('Layer_16x.svg');
+    }
 
     private themed(name: string): ThemedIcon {
         return {
