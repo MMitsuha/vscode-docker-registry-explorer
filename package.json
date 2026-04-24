@@ -11,9 +11,9 @@
     },
     "author": {
         "name": "Miyamizu Mitsuha",
-        "email": "syq20190414@gmail.com"
+        "email": "miyammitsuha@gmail.com"
     },
-    "publisher": "TqrHsn",
+    "publisher": "MMitsuha",
     "engines": {
         "vscode": "^1.90.0"
     },
@@ -29,9 +29,9 @@
         "docker V2"
     ],
     "repository": {
-        "url": "https://github.com/TqrHsn/vscode-docker-registry-explorer.git"
+        "url": "https://github.com/MMitsuha/vscode-docker-registry-explorer.git"
     },
-    "homepage": "https://github.com/TqrHsn/vscode-docker-registry-explorer/blob/master/README.md",
+    "homepage": "https://github.com/MMitsuha/vscode-docker-registry-explorer/blob/master/README.md",
     "activationEvents": [
         "onView:dockerRegistryExplorer"
     ],
