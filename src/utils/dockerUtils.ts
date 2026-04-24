@@ -1,10 +1,8 @@
-import * as vscode from 'vscode';
-import * as typedRestClient from 'typed-rest-client/RestClient';
 import { URL } from 'url';
 
 export interface Tag {
     name: string;
-    tags: string[];
+    tags: string[] | null;
 }
 
 export interface ManifestV2LayerItem {
@@ -20,105 +18,106 @@ export interface ManifestV2 {
     layers: ManifestV2LayerItem[];
 }
 
-export class DockerAPIV2Helper {
+export const MANIFEST_ACCEPT_HEADER = [
+    'application/vnd.docker.distribution.manifest.v2+json',
+    'application/vnd.docker.distribution.manifest.list.v2+json',
+    'application/vnd.oci.image.manifest.v1+json',
+    'application/vnd.oci.image.index.v1+json'
+].join(', ');
 
-    private restClient: typedRestClient.RestClient;
-    private authHeader: string;
+export class RegistryError extends Error {
+    constructor(message: string, public readonly status?: number) {
+        super(message);
+        this.name = 'RegistryError';
+    }
+}
+
+export class DockerAPIV2Helper {
+    private readonly authHeader: string | undefined;
+
     constructor(
         public readonly baseUrl: URL,
-        private readonly user: string,
-        private readonly password: string
+        user: string,
+        password: string
     ) {
-        this.restClient = new typedRestClient.RestClient('vscode-pvt-registry-explorer', this.baseUrl.toString());
-        this.authHeader = (this.user || this.password)
-            ? 'Basic ' + Buffer.from(`${this.user}:${this.password}`).toString('base64')
-            : '';
-    }
-
-    private requestOptions(extra: typedRestClient.IRequestOptions = {}): typedRestClient.IRequestOptions {
-        if (!this.authHeader) {
-            return extra;
-        }
-        return {
-            ...extra,
-            additionalHeaders: { ...(extra.additionalHeaders || {}), 'Authorization': this.authHeader }
-        };
+        this.authHeader = (user || password)
+            ? 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64')
+            : undefined;
     }
 
     async getCatalogs(): Promise<string[]> {
-        try {
-            let resp = await this.restClient.get<{ repositories: string[] }>('/v2/_catalog', this.requestOptions());
-            if (resp.statusCode !== 200) {
-                vscode.window.showErrorMessage(`${this.baseUrl} returned ${resp.statusCode}.`);
-            }
-            if (resp.result) {
-                return resp.result.repositories;
-            } else {
-                return [];
-            }
-        } catch (error) {
-            this.showRequestError(error);
-        }
-
-        return [];
+        const body = await this.request<{ repositories?: string[] }>('/v2/_catalog');
+        return body?.repositories ?? [];
     }
 
     async getTags(repository: string): Promise<Tag | null> {
-        try {
-            let resp = await this.restClient.get<Tag>(`/v2/${repository}/tags/list`, this.requestOptions());
-
-            if (resp.statusCode !== 200) {
-                vscode.window.showErrorMessage(`${this.baseUrl} returned ${resp.statusCode}.`);
-            }
-            if (resp.result) {
-                return resp.result;
-            } else {
-                return null;
-            }
-        } catch (error) {
-            this.showRequestError(error);
-        }
-
-        return null;
+        return this.request<Tag>(`/v2/${this.encodeRepository(repository)}/tags/list`);
     }
 
     async getManifestV2(repository: string, reference: string): Promise<ManifestV2 | null> {
-        try {
-            let resp = await this.restClient.get<ManifestV2>(`/v2/${repository}/manifests/${reference}`, this.requestOptions({ acceptHeader: 'application/vnd.docker.distribution.manifest.v2+json' }));
-
-            if (resp.statusCode !== 200) {
-                vscode.window.showErrorMessage(`${this.baseUrl} returned ${resp.statusCode}.`);
-            }
-            if (resp.result) {
-                return resp.result;
-            } else {
-                return null;
-            }
-        } catch (error) {
-            this.showRequestError(error);
-        }
-
-        return null;
+        return this.request<ManifestV2>(
+            `/v2/${this.encodeRepository(repository)}/manifests/${encodeURIComponent(reference)}`,
+            { accept: MANIFEST_ACCEPT_HEADER }
+        );
     }
 
     async deleteManifestV2(repository: string, reference: string): Promise<boolean> {
-        try {
-            let resp = await this.restClient.del<ManifestV2>(`/v2/${repository}/manifests/${reference}`, this.requestOptions());
-
-            if (resp.statusCode !== 202) {
-                vscode.window.showErrorMessage(`${this.baseUrl} returned ${resp.statusCode}.`);
-            }else{
-                return true;
-            }
-        } catch (error) {
-            this.showRequestError(error);
+        const digest = await this.getManifestDigest(repository, reference);
+        if (!digest) {
+            throw new RegistryError(`Could not resolve manifest digest for ${repository}:${reference}.`);
         }
 
-        return false;
+        const url = this.buildUrl(`/v2/${this.encodeRepository(repository)}/manifests/${encodeURIComponent(digest)}`);
+        const response = await fetch(url, { method: 'DELETE', headers: this.headers() });
+
+        if (response.status === 202) {
+            return true;
+        }
+        throw new RegistryError(
+            `DELETE ${url} returned ${response.status}. Registries must be started with REGISTRY_STORAGE_DELETE_ENABLED=true.`,
+            response.status
+        );
     }
 
-    private showRequestError(error: any): void {
-        vscode.window.showErrorMessage(`Error occured while sending request to ${this.baseUrl}.\r\n` + error);
+    private async getManifestDigest(repository: string, reference: string): Promise<string | null> {
+        const url = this.buildUrl(`/v2/${this.encodeRepository(repository)}/manifests/${encodeURIComponent(reference)}`);
+        const response = await fetch(url, {
+            method: 'HEAD',
+            headers: this.headers({ accept: MANIFEST_ACCEPT_HEADER })
+        });
+
+        if (!response.ok) {
+            throw new RegistryError(`HEAD ${url} returned ${response.status}.`, response.status);
+        }
+        return response.headers.get('docker-content-digest');
     }
 
+    private async request<T>(path: string, extra: { accept?: string } = {}): Promise<T | null> {
+        const url = this.buildUrl(path);
+        const response = await fetch(url, { headers: this.headers(extra) });
+
+        if (response.status === 404) {
+            return null;
+        }
+        if (!response.ok) {
+            throw new RegistryError(`GET ${url} returned ${response.status}.`, response.status);
+        }
+        return response.json() as Promise<T>;
+    }
+
+    private headers(extra: { accept?: string } = {}): Record<string, string> {
+        const headers: Record<string, string> = { Accept: extra.accept ?? 'application/json' };
+        if (this.authHeader) {
+            headers.Authorization = this.authHeader;
+        }
+        return headers;
+    }
+
+    private buildUrl(path: string): string {
+        return new URL(path, this.baseUrl).toString();
+    }
+
+    private encodeRepository(repository: string): string {
+        return repository.split('/').map(encodeURIComponent).join('/');
+    }
 }

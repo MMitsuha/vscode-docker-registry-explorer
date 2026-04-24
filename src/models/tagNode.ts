@@ -5,62 +5,39 @@ import { LayerNode } from './layerNode';
 import { Utility } from '../utils/utility';
 import { RootNode } from './rootNode';
 
-
 export class TagNode extends RootNode {
+    public readonly iconPath = {
+        light: vscode.Uri.file(path.join(__filename, '..', '..', '..', 'resources', 'light', 'Image_16x.svg')),
+        dark: vscode.Uri.file(path.join(__filename, '..', '..', '..', 'resources', 'dark', 'Image_16x.svg'))
+    };
+    public readonly contextValue = 'tagNode';
 
     constructor(
-        public readonly label: string,
         public readonly tag: string,
-        public collapsibleState: vscode.TreeItemCollapsibleState,
         public readonly repository: string,
-        private readonly dockerAPIV2Helper: DockerAPIV2Helper,
+        private readonly client: DockerAPIV2Helper,
         onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined>,
-        parent: RootNode | undefined = undefined,
-        public readonly iconPath: { light: vscode.Uri; dark: vscode.Uri } | undefined = {
-            light: vscode.Uri.file(path.join(__filename, '..', '..', '..', 'resources', 'light', 'Image_16x.svg')),
-            dark: vscode.Uri.file(path.join(__filename, '..', '..', '..', 'resources', 'dark', 'Image_16x.svg'))
-        }
+        parent: RootNode
     ) {
-        super(label, collapsibleState, onDidChangeTreeData, parent);
-        this.tooltip = "Expand to view total size of this image.";
+        super(tag, vscode.TreeItemCollapsibleState.Collapsed, onDidChangeTreeData, parent);
+        this.tooltip = 'Expand to view total size of this image.';
     }
 
-    getChildren(element?: RootNode): vscode.ProviderResult<LayerNode[]> {
-        return new Promise(async resolve => {
-            let chldrns: LayerNode[] = new Array<LayerNode>();
-
-
-            let resp = await this.dockerAPIV2Helper.getManifestV2(this.repository, this.tag);
-
-            if (resp) {
-                let totalSize: number = 0;
-                resp.layers.forEach(layer => {
-                    chldrns.push(new LayerNode(vscode.TreeItemCollapsibleState.None, layer));
-                    totalSize += layer.size;
-                });
-
-                this.tooltip = 'Image size: ' + Utility.formatBytes(totalSize);
-
-                if (this.collapsibleState !== vscode.TreeItemCollapsibleState.Expanded) {
-                    this.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
-                    this.onDidChangeTreeData.fire(this);
-                }
-
-            }
-
-            resolve(chldrns);
-        });
+    async getChildren(): Promise<LayerNode[]> {
+        const manifest = await this.client.getManifestV2(this.repository, this.tag);
+        if (!manifest || !manifest.layers) {
+            return [];
+        }
+        const totalSize = manifest.layers.reduce((sum, layer) => sum + layer.size, 0);
+        this.tooltip = 'Image size: ' + Utility.formatBytes(totalSize);
+        return manifest.layers.map(layer => new LayerNode(layer));
     }
 
     getImageName(): string {
-        let imageName: string = `${this.dockerAPIV2Helper.baseUrl.hostname}/${this.repository}:${this.tag}`;
-        return imageName;
+        return `${this.client.baseUrl.hostname}/${this.repository}:${this.tag}`;
     }
 
-    async deleteFromRepository(): Promise<boolean> {
-        let res: boolean = await this.dockerAPIV2Helper.deleteManifestV2(this.repository, this.tag);
-        return res;
+    deleteFromRepository(): Promise<boolean> {
+        return this.client.deleteManifestV2(this.repository, this.tag);
     }
-
-    contextValue = 'tagNode';
 }

@@ -1,44 +1,32 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { RepositoryNode } from './repositoryNode';
-import { TreeItemCollapsibleState } from 'vscode';
-import { DockerAPIV2Helper } from '../utils/dockerUtils';
 import { URL } from 'url';
+import { DockerAPIV2Helper } from '../utils/dockerUtils';
+import { RepositoryNode } from './repositoryNode';
 import { RootNode } from './rootNode';
 
 export class RegistryNode extends RootNode {
+    public readonly iconPath = {
+        light: vscode.Uri.file(path.join(__filename, '..', '..', '..', 'resources', 'light', 'Registry_16x.svg')),
+        dark: vscode.Uri.file(path.join(__filename, '..', '..', '..', 'resources', 'dark', 'Registry_16x.svg'))
+    };
+    public readonly contextValue = 'registryNode';
+    private readonly client: DockerAPIV2Helper;
 
-    private readonly dockerApiV2Helper: DockerAPIV2Helper;
     constructor(
-        readonly label: string,
         public readonly key: string,
-        readonly collapsibleState: vscode.TreeItemCollapsibleState,
-        private readonly url: string,
-        private readonly user: string,
-        private readonly password: string,
-        onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined>,
-        parent: RootNode | undefined = undefined,
-        public readonly iconPath = {
-            light: vscode.Uri.file(path.join(__filename, '..', '..', '..','resources', 'light', 'Registry_16x.svg')),
-            dark: vscode.Uri.file(path.join(__filename, '..', '..','..', 'resources', 'dark', 'Registry_16x.svg'))
-        }
+        user: string,
+        password: string,
+        onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined>
     ) {
-        super(label, collapsibleState, onDidChangeTreeData, parent);
-        this.dockerApiV2Helper = new DockerAPIV2Helper(new URL(this.url), this.user, this.password);
+        const url = new URL(key);
+        super(url.hostname, vscode.TreeItemCollapsibleState.Collapsed, onDidChangeTreeData);
+        this.client = new DockerAPIV2Helper(url, user, password);
+        this.tooltip = url.toString();
     }
 
-    getChildren(element?: RootNode | undefined): vscode.ProviderResult<RepositoryNode[]> {
-        return new Promise(async resolve => {
-            let chldrns: RepositoryNode[] = new Array<RepositoryNode>();
-
-            let resp = await this.dockerApiV2Helper.getCatalogs();
-            resp.forEach(element => {
-                chldrns.push(new RepositoryNode(element, TreeItemCollapsibleState.Collapsed, this.dockerApiV2Helper, this.onDidChangeTreeData, this));
-            });
-
-            resolve(chldrns);
-        });
+    async getChildren(): Promise<RepositoryNode[]> {
+        const repositories = await this.client.getCatalogs();
+        return repositories.map(name => new RepositoryNode(name, this.client, this.onDidChangeTreeData, this));
     }
-
-    contextValue = 'registryNode';
 }

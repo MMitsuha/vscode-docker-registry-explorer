@@ -1,174 +1,177 @@
-'use strict';
-
 import * as vscode from 'vscode';
-import * as copyPaste from 'copy-paste';
+import { URL } from 'url';
 
 import { PrivateDockerExplorerProvider } from './explorer/dockerExplorer';
+import { CredentialStore } from './utils/credentialStore';
 import { LayerNode } from './models/layerNode';
 import { TagNode } from './models/tagNode';
-import { InputBoxOptions, MessageItem } from 'vscode';
-import { Utility } from './utils/utility';
-import { URL } from 'url';
 import { RegistryNode } from './models/registryNode';
-import { Globals } from './globals';
 import { RepositoryNode } from './models/repositoryNode';
 
+export function activate(context: vscode.ExtensionContext): void {
+    const credentialStore = new CredentialStore(context);
+    const explorer = new PrivateDockerExplorerProvider(credentialStore);
 
-export function activate(context: vscode.ExtensionContext) {
+    context.subscriptions.push(
+        vscode.window.registerTreeDataProvider('dockerRegistryExplorer', explorer),
 
-    const dockerRegistryExplorer = new PrivateDockerExplorerProvider(context);
+        vscode.commands.registerCommand('dockerRegistryExplorer.refreshEntry', () => explorer.refresh()),
 
-    vscode.window.registerTreeDataProvider('dockerRegistryExplorer', dockerRegistryExplorer);
+        vscode.commands.registerCommand('dockerRegistryExplorer.addEntry', () => addRegistry(credentialStore, explorer)),
 
-    vscode.commands.registerCommand('dockerRegistryExplorer.refreshEntry', () => dockerRegistryExplorer.refresh());
-    vscode.commands.registerCommand('dockerRegistryExplorer.addEntry', async node => {
-        let regUrl: string | undefined = await vscode.window.showInputBox({
-            ignoreFocusOut: true,
-            placeHolder: 'https://myregistry.io',
-            prompt: 'Registry url',
-            validateInput: (value: string): string => {
-                try {
-                    let url = new URL(value);
-                    let retVal = url.toString();
-                    retVal = "";
-                    return retVal;
-                } catch (error) {
-                    return `Please enter a valid url (A valid url begins with 'http://' or 'https://'). ${error}`;
-                }
-            }
-        });
-        if (regUrl) {
-            try {
-                let url: URL = new URL(regUrl);
+        vscode.commands.registerCommand('dockerRegistryExplorer.registryNode.refreshEntry',
+            (node: RegistryNode) => node.refresh()),
 
-                const authChoice = await vscode.window.showQuickPick(
-                    [
-                        { label: 'Anonymous', description: 'No authentication' },
-                        { label: 'Basic', description: 'Username & password' }
-                    ],
-                    { ignoreFocusOut: true, placeHolder: `Authentication for ${url.toString()}` }
-                );
-                if (!authChoice) {
-                    return;
-                }
+        vscode.commands.registerCommand('dockerRegistryExplorer.registryNode.deleteEntry',
+            (node: RegistryNode) => deleteRegistry(node, credentialStore, explorer)),
 
-                if (authChoice.label === 'Anonymous') {
-                    let nodesData: string[] = context.globalState.get(Globals.GLOBAL_STATE_REGS_KEY, []);
-                    nodesData.push(url.toString());
-                    context.globalState.update(Globals.GLOBAL_STATE_REGS_KEY, nodesData);
-                    dockerRegistryExplorer.refresh();
-                    return;
-                }
+        vscode.commands.registerCommand('dockerRegistryExplorer.repositoryNode.refreshEntry',
+            (node: RepositoryNode) => node.refresh()),
 
-                let keytar: any = Utility.getCoreNodeModule('keytar');
-                let username: string | undefined = await vscode.window.showInputBox({ ignoreFocusOut: true, prompt: `Username for ${url.toString()}` });
-                if (username) {
-                    let password: string | undefined = await vscode.window.showInputBox({ ignoreFocusOut: true, prompt: `Password for ${url.toString()}`, password: true });
-                    if (password) {
-                        if (keytar) {
-                            let nodesData: string[] = context.globalState.get(Globals.GLOBAL_STATE_REGS_KEY, []);
-                            nodesData.push(url.toString());
-                            context.globalState.update(Globals.GLOBAL_STATE_REGS_KEY, nodesData);
-                            dockerRegistryExplorer.refresh();
-                            keytar.setPassword(Globals.KEYTAR_SECRETS_KEY, `${url.toString()}.${Globals.KEYTAR_SECRETS_ACCOUNT_USER_POSTFIX_KEY}`, username);
-                            keytar.setPassword(Globals.KEYTAR_SECRETS_KEY, `${url.toString()}.${Globals.KEYTAR_SECRETS_ACCOUNT_PASSWORD_POSTFIX_KEY}`, password);
-                        }
-                    }
-                }
-            } catch (error) {
-                vscode.window.showErrorMessage('Error occured. Please try again. ' + error);
-            }
-        }
+        vscode.commands.registerCommand('dockerRegistryExplorer.tagNode.copyName',
+            (node: TagNode) => copyToClipboard(node.getImageName(), 'image name')),
 
-    });
+        vscode.commands.registerCommand('dockerRegistryExplorer.tagNode.pullImage',
+            (node: TagNode) => runDockerCommand(`docker pull ${node.getImageName()}`, 'pull image')),
 
-    vscode.commands.registerCommand('dockerRegistryExplorer.registryNode.refreshEntry', (node: RegistryNode) => node.refresh());
-    vscode.commands.registerCommand('dockerRegistryExplorer.registryNode.deleteEntry', async (node: RegistryNode) => {
-        let regName = node.key;
-        const result = await vscode.window.showWarningMessage(`Delete entry for '${regName}'?`, { title: 'Yes' } as MessageItem, { title: 'No', isCloseAffordance: true } as MessageItem);
-        if (result && result.title === 'Yes') {
-            let nodesData: string[] = context.globalState.get(Globals.GLOBAL_STATE_REGS_KEY, []);
-            var index = nodesData.indexOf(regName);
-            if (index !== -1) {
-                nodesData.splice(index, 1);
+        vscode.commands.registerCommand('dockerRegistryExplorer.tagNode.removeLocalImage',
+            (node: TagNode) => runDockerCommand(`docker rmi ${node.getImageName()}`, 'remove image')),
 
-                let keytar: any = Utility.getCoreNodeModule('keytar');
-                if (keytar) {
-                    await keytar.deletePassword(Globals.KEYTAR_SECRETS_KEY, `${regName}.${Globals.KEYTAR_SECRETS_ACCOUNT_USER_POSTFIX_KEY}`);
-                    await keytar.deletePassword(Globals.KEYTAR_SECRETS_KEY, `${regName}.${Globals.KEYTAR_SECRETS_ACCOUNT_PASSWORD_POSTFIX_KEY}`);
-                }
+        vscode.commands.registerCommand('dockerRegistryExplorer.tagNode.removeRemoteImage',
+            (node: TagNode) => deleteRemoteImage(node)),
 
-                context.globalState.update(Globals.GLOBAL_STATE_REGS_KEY, nodesData);
-                vscode.window.showInformationMessage(`Registry settings for '${regName}' successfully deleted.`);
-                dockerRegistryExplorer.refresh();
-            }
-        }
-    });
-
-    vscode.commands.registerCommand('dockerRegistryExplorer.repositoryNode.refreshEntry', (node: RepositoryNode) => node.refresh());
-
-    vscode.commands.registerCommand('dockerRegistryExplorer.tagNode.copyName', async (node: TagNode) => {
-        let imageName: string = node.getImageName();
-        copyPaste.copy(imageName);
-        vscode.window.setStatusBarMessage(`The image name "${imageName}" is copied to clipboard.`, 3000);
-    });
-
-    vscode.commands.registerCommand('dockerRegistryExplorer.tagNode.pullImage', async (node: TagNode) => {
-        let imageName: string = node.getImageName();
-        const command = await vscode.window.showInputBox({
-            prompt: `Run this command to pull image?`,
-            placeHolder: ``,
-            value: `docker pull ${imageName}`
-        } as InputBoxOptions);
-        if (command === undefined || command === '') {
-            return;
-        }
-        const terminal = vscode.window.createTerminal();
-        terminal.show();
-        terminal.sendText(command, false);
-    });
-
-    vscode.commands.registerCommand('dockerRegistryExplorer.tagNode.removeLocalImage', async (node: TagNode) => {
-        let imageName: string = node.getImageName();
-        const command = await vscode.window.showInputBox({
-            prompt: `Run this command to remove image?`,
-            placeHolder: ``,
-            value: `docker rmi ${imageName}`
-        } as InputBoxOptions);
-        if (command === undefined || command === '') {
-            return;
-        }
-        const terminal = vscode.window.createTerminal();
-        terminal.show();
-        terminal.sendText(command, false);
-    });
-
-    vscode.commands.registerCommand('dockerRegistryExplorer.tagNode.removeRemoteImage', async (node: TagNode) => {
-        const result = await vscode.window.showWarningMessage(`Delete '${node.getImageName()}' from your docker repository?`, { title: 'Yes' } as MessageItem, { title: 'No', isCloseAffordance: true } as MessageItem);
-        if (result && result.title === 'Yes') {
-            let res: boolean = await node.deleteFromRepository();
-
-            if (res) {
-                if (node.parent) {
-                    let repoNode: RepositoryNode = node.parent as unknown as RepositoryNode;
-                    if (repoNode.chldrenCount !== 1) {
-                        repoNode.refresh();
-                    }else if(repoNode.parent){
-                        repoNode.parent.refresh();
-                    }
-                }
-            }
-        }
-    });
-
-    vscode.commands.registerCommand('dockerRegistryExplorer.layerNode.copyDigest', (node: LayerNode) => {
-        let hash = node.layerItem.digest;
-        copyPaste.copy(hash);
-        vscode.window.setStatusBarMessage(`The digest value "${hash}" is copied to clipboard.`, 3000);
-    });
-
+        vscode.commands.registerCommand('dockerRegistryExplorer.layerNode.copyDigest',
+            (node: LayerNode) => copyToClipboard(node.layerItem.digest, 'digest value'))
+    );
 }
 
-// this method is called when your extension is deactivated
-export function deactivate() {
+export function deactivate(): void {}
+
+async function addRegistry(store: CredentialStore, explorer: PrivateDockerExplorerProvider): Promise<void> {
+    const regUrl = await vscode.window.showInputBox({
+        ignoreFocusOut: true,
+        placeHolder: 'https://myregistry.io',
+        prompt: 'Registry url',
+        validateInput: validateRegistryUrl
+    });
+    if (!regUrl) {
+        return;
+    }
+
+    try {
+        const url = new URL(regUrl).toString();
+        const authChoice = await vscode.window.showQuickPick(
+            [
+                { label: 'Anonymous', description: 'No authentication' },
+                { label: 'Basic', description: 'Username & password' }
+            ],
+            { ignoreFocusOut: true, placeHolder: `Authentication for ${url}` }
+        );
+        if (!authChoice) {
+            return;
+        }
+
+        if (authChoice.label === 'Anonymous') {
+            await store.addRegistry(url);
+            explorer.refresh();
+            return;
+        }
+
+        const user = await vscode.window.showInputBox({ ignoreFocusOut: true, prompt: `Username for ${url}` });
+        if (!user) {
+            return;
+        }
+        const password = await vscode.window.showInputBox({ ignoreFocusOut: true, prompt: `Password for ${url}`, password: true });
+        if (!password) {
+            return;
+        }
+
+        await store.addRegistry(url, { user, password });
+        explorer.refresh();
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to add registry: ${formatError(error)}`);
+    }
+}
+
+async function deleteRegistry(node: RegistryNode, store: CredentialStore, explorer: PrivateDockerExplorerProvider): Promise<void> {
+    const confirm = await vscode.window.showWarningMessage(
+        `Delete entry for '${node.key}'?`,
+        { modal: true },
+        'Yes'
+    );
+    if (confirm !== 'Yes') {
+        return;
+    }
+    try {
+        await store.removeRegistry(node.key);
+        vscode.window.showInformationMessage(`Registry '${node.key}' removed.`);
+        explorer.refresh();
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to remove registry: ${formatError(error)}`);
+    }
+}
+
+async function deleteRemoteImage(node: TagNode): Promise<void> {
+    const confirm = await vscode.window.showWarningMessage(
+        `Delete '${node.getImageName()}' from your docker repository?`,
+        { modal: true },
+        'Yes'
+    );
+    if (confirm !== 'Yes') {
+        return;
+    }
+    try {
+        const ok = await node.deleteFromRepository();
+        if (!ok) {
+            return;
+        }
+        const repo = node.parent as RepositoryNode | undefined;
+        if (!repo) {
+            return;
+        }
+        if (repo.childrenCount <= 1 && repo.parent) {
+            repo.parent.refresh();
+        } else {
+            repo.refresh();
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to delete image: ${formatError(error)}`);
+    }
+}
+
+async function runDockerCommand(defaultCommand: string, action: string): Promise<void> {
+    const command = await vscode.window.showInputBox({
+        prompt: `Run this command to ${action}?`,
+        value: defaultCommand
+    });
+    if (!command) {
+        return;
+    }
+    const terminal = vscode.window.createTerminal();
+    terminal.show();
+    terminal.sendText(command, false);
+}
+
+async function copyToClipboard(text: string, label: string): Promise<void> {
+    await vscode.env.clipboard.writeText(text);
+    vscode.window.setStatusBarMessage(`The ${label} "${text}" is copied to clipboard.`, 3000);
+}
+
+function validateRegistryUrl(value: string): string | undefined {
+    try {
+        const url = new URL(value);
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            return `URL must start with 'http://' or 'https://'.`;
+        }
+        return undefined;
+    } catch {
+        return `Please enter a valid url (A valid url begins with 'http://' or 'https://').`;
+    }
+}
+
+function formatError(error: unknown): string {
+    if (error instanceof Error) {
+        return error.message;
+    }
+    return String(error);
 }
