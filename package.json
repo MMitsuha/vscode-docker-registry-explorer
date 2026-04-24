@@ -35,7 +35,7 @@
     "activationEvents": [
         "onView:dockerRegistryExplorer"
     ],
-    "main": "./out/extension",
+    "main": "./dist/extension.js",
     "contributes": {
         "views": {
             "explorer": [
@@ -155,10 +155,13 @@
         }
     },
     "scripts": {
-        "vscode:prepublish": "bun run compile",
-        "compile": "tsc -p ./",
-        "watch": "tsc -watch -p ./",
-        "pretest": "bun run compile",
+        "vscode:prepublish": "bun run package",
+        "package": "bun run check-types && node esbuild.js --production",
+        "compile": "bun run check-types && node esbuild.js",
+        "watch": "node esbuild.js --watch",
+        "check-types": "tsc --noEmit -p ./",
+        "compile-tests": "tsc -p ./",
+        "pretest": "bun run compile-tests",
         "test": "node ./out/test/runTest.js"
     },
     "devDependencies": {
@@ -167,6 +170,7 @@
         "@types/node": "^20.19.0",
         "@types/vscode": "^1.90.0",
         "@vscode/test-electron": "^2.5.2",
+        "esbuild": "^0.28.0",
         "mocha": "^11.7.5",
         "typescript": "^5.9.0"
     },
