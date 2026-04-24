@@ -1,5 +1,13 @@
 # Change Log
 
+## 0.2.3 - 2026-04-24
+
+### Fixed
+- Tag tooltips now show the total image size. The old implementation mutated `tooltip` inside `getChildren` after the tree item was already rendered, so VS Code never picked up the new value. Replaced with `TreeDataProvider.resolveTreeItem`, which lazily fetches the manifest on hover.
+
+### Changed
+- Manifest fetch for a tag is now cached per `TagNode` instance and reused by both `resolveTreeItem` (for the size tooltip) and `getChildren` (for the layer list), so hover + expand share a single HTTP request.
+
 ## 0.2.2 - 2026-04-24
 
 ### Fixed

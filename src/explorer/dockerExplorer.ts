@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { CredentialStore } from '../utils/credentialStore';
 import { RegistryNode } from '../models/registryNode';
 import { RootNode } from '../models/rootNode';
+import { TagNode } from '../models/tagNode';
 import { Icons } from '../utils/icons';
 import { log } from '../utils/logger';
 
@@ -45,6 +46,18 @@ export class PrivateDockerExplorerProvider implements vscode.TreeDataProvider<vs
             vscode.window.showErrorMessage(`Failed to load ${label}: ${formatError(error)}`);
             return [];
         }
+    }
+
+    async resolveTreeItem(item: vscode.TreeItem, element: vscode.TreeItem): Promise<vscode.TreeItem> {
+        if (element instanceof TagNode) {
+            try {
+                item.tooltip = await element.resolveTooltip();
+            } catch (error) {
+                log().error(`resolveTooltip failed for tag ${element.tag}`, error);
+                item.tooltip = `Failed to load size: ${formatError(error)}`;
+            }
+        }
+        return item;
     }
 }
 
