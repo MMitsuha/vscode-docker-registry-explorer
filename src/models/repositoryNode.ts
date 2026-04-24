@@ -17,11 +17,11 @@ export class RepositoryNode extends RootNode {
         public readonly label: string,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
         private readonly dockerAPIV2Helper: DockerAPIV2Helper,
-        onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem>,
+        onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined>,
         parent: RootNode | undefined = undefined,
         public readonly iconPath = {
-            light: path.join(__filename, '..', '..', '..', 'resources', 'light', 'Repository_16x.svg'),
-            dark: path.join(__filename, '..', '..', '..', 'resources', 'dark', 'Repository_16x.svg')
+            light: vscode.Uri.file(path.join(__filename, '..', '..', '..', 'resources', 'light', 'Repository_16x.svg')),
+            dark: vscode.Uri.file(path.join(__filename, '..', '..', '..', 'resources', 'dark', 'Repository_16x.svg'))
         }
     ) {
         super(label, collapsibleState, onDidChangeTreeData, parent);

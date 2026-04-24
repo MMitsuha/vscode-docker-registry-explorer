@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as keytarType from 'keytar';
 import { RegistryNode } from '../models/registryNode';
 import { URL } from 'url';
 import { Globals } from '../globals';
@@ -7,11 +6,11 @@ import { Utility } from '../utils/utility';
 import { RootNode } from '../models/rootNode';
 
 export class PrivateDockerExplorerProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
-    private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem> = new vscode.EventEmitter<vscode.TreeItem>();
-    readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem> = this._onDidChangeTreeData.event;
+    private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined> = new vscode.EventEmitter<vscode.TreeItem | undefined>();
+    readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined> = this._onDidChangeTreeData.event;
 
     async refresh(): Promise<void> {
-        this._onDidChangeTreeData.fire();
+        this._onDidChangeTreeData.fire(undefined);
     }
 
     constructor(private context: vscode.ExtensionContext) {
@@ -26,7 +25,7 @@ export class PrivateDockerExplorerProvider implements vscode.TreeDataProvider<vs
         if (!element) {
             return new Promise(async resolve => {
                 let chldrns: RegistryNode[] = new Array<RegistryNode>();
-                let keytar: typeof keytarType = Utility.getCoreNodeModule('keytar');
+                let keytar: any = Utility.getCoreNodeModule('keytar');
 
                 let nodesData: string[] = this.context.globalState.get(Globals.GLOBAL_STATE_REGS_KEY, []);
 

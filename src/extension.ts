@@ -2,7 +2,6 @@
 
 import * as vscode from 'vscode';
 import * as copyPaste from 'copy-paste';
-import * as keytarType from 'keytar';
 
 import { PrivateDockerExplorerProvider } from './explorer/dockerExplorer';
 import { LayerNode } from './models/layerNode';
@@ -23,7 +22,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     vscode.commands.registerCommand('dockerRegistryExplorer.refreshEntry', () => dockerRegistryExplorer.refresh());
     vscode.commands.registerCommand('dockerRegistryExplorer.addEntry', async node => {
-        let keytar: typeof keytarType = Utility.getCoreNodeModule('keytar');
+        let keytar: any = Utility.getCoreNodeModule('keytar');
 
         let regUrl: string | undefined = await vscode.window.showInputBox({
             ignoreFocusOut: true,
@@ -74,7 +73,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (index !== -1) {
                 nodesData.splice(index, 1);
 
-                let keytar: typeof keytarType = Utility.getCoreNodeModule('keytar');
+                let keytar: any = Utility.getCoreNodeModule('keytar');
 
                 let isUserDeleted = await keytar.deletePassword(Globals.KEYTAR_SECRETS_KEY, `${regName}.${Globals.KEYTAR_SECRETS_ACCOUNT_USER_POSTFIX_KEY}`);
                 let isPassDeleted = await keytar.deletePassword(Globals.KEYTAR_SECRETS_KEY, `${regName}.${Globals.KEYTAR_SECRETS_ACCOUNT_PASSWORD_POSTFIX_KEY}`);
@@ -134,7 +133,7 @@ export function activate(context: vscode.ExtensionContext) {
 
             if (res) {
                 if (node.parent) {
-                    let repoNode: RepositoryNode = node.parent as RepositoryNode;
+                    let repoNode: RepositoryNode = node.parent as unknown as RepositoryNode;
                     if (repoNode.chldrenCount !== 1) {
                         repoNode.refresh();
                     }else if(repoNode.parent){

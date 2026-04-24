@@ -16,11 +16,11 @@ export class RegistryNode extends RootNode {
         private readonly url: string,
         private readonly user: string,
         private readonly password: string,
-        onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem>,
+        onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined>,
         parent: RootNode | undefined = undefined,
         public readonly iconPath = {
-            light: path.join(__filename, '..', '..', '..','resources', 'light', 'Registry_16x.svg'),
-            dark: path.join(__filename, '..', '..','..', 'resources', 'dark', 'Registry_16x.svg')
+            light: vscode.Uri.file(path.join(__filename, '..', '..', '..','resources', 'light', 'Registry_16x.svg')),
+            dark: vscode.Uri.file(path.join(__filename, '..', '..','..', 'resources', 'dark', 'Registry_16x.svg'))
         }
     ) {
         super(label, collapsibleState, onDidChangeTreeData, parent);

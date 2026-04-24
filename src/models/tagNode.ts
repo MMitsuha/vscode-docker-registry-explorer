@@ -14,11 +14,11 @@ export class TagNode extends RootNode {
         public collapsibleState: vscode.TreeItemCollapsibleState,
         public readonly repository: string,
         private readonly dockerAPIV2Helper: DockerAPIV2Helper,
-        onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem>,
+        onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined>,
         parent: RootNode | undefined = undefined,
-        public readonly iconPath: { light: string; dark: string } | undefined = {
-            light: path.join(__filename, '..', '..', '..', 'resources', 'light', 'Image_16x.svg'),
-            dark: path.join(__filename, '..', '..', '..', 'resources', 'dark', 'Image_16x.svg')
+        public readonly iconPath: { light: vscode.Uri; dark: vscode.Uri } | undefined = {
+            light: vscode.Uri.file(path.join(__filename, '..', '..', '..', 'resources', 'light', 'Image_16x.svg')),
+            dark: vscode.Uri.file(path.join(__filename, '..', '..', '..', 'resources', 'dark', 'Image_16x.svg'))
         }
     ) {
         super(label, collapsibleState, onDidChangeTreeData, parent);
