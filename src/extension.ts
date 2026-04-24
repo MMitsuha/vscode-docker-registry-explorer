@@ -22,8 +22,6 @@ export function activate(context: vscode.ExtensionContext) {
 
     vscode.commands.registerCommand('dockerRegistryExplorer.refreshEntry', () => dockerRegistryExplorer.refresh());
     vscode.commands.registerCommand('dockerRegistryExplorer.addEntry', async node => {
-        let keytar: any = Utility.getCoreNodeModule('keytar');
-
         let regUrl: string | undefined = await vscode.window.showInputBox({
             ignoreFocusOut: true,
             placeHolder: 'https://myregistry.io',
@@ -42,6 +40,27 @@ export function activate(context: vscode.ExtensionContext) {
         if (regUrl) {
             try {
                 let url: URL = new URL(regUrl);
+
+                const authChoice = await vscode.window.showQuickPick(
+                    [
+                        { label: 'Anonymous', description: 'No authentication' },
+                        { label: 'Basic', description: 'Username & password' }
+                    ],
+                    { ignoreFocusOut: true, placeHolder: `Authentication for ${url.toString()}` }
+                );
+                if (!authChoice) {
+                    return;
+                }
+
+                if (authChoice.label === 'Anonymous') {
+                    let nodesData: string[] = context.globalState.get(Globals.GLOBAL_STATE_REGS_KEY, []);
+                    nodesData.push(url.toString());
+                    context.globalState.update(Globals.GLOBAL_STATE_REGS_KEY, nodesData);
+                    dockerRegistryExplorer.refresh();
+                    return;
+                }
+
+                let keytar: any = Utility.getCoreNodeModule('keytar');
                 let username: string | undefined = await vscode.window.showInputBox({ ignoreFocusOut: true, prompt: `Username for ${url.toString()}` });
                 if (username) {
                     let password: string | undefined = await vscode.window.showInputBox({ ignoreFocusOut: true, prompt: `Password for ${url.toString()}`, password: true });
@@ -74,15 +93,13 @@ export function activate(context: vscode.ExtensionContext) {
                 nodesData.splice(index, 1);
 
                 let keytar: any = Utility.getCoreNodeModule('keytar');
-
-                let isUserDeleted = await keytar.deletePassword(Globals.KEYTAR_SECRETS_KEY, `${regName}.${Globals.KEYTAR_SECRETS_ACCOUNT_USER_POSTFIX_KEY}`);
-                let isPassDeleted = await keytar.deletePassword(Globals.KEYTAR_SECRETS_KEY, `${regName}.${Globals.KEYTAR_SECRETS_ACCOUNT_PASSWORD_POSTFIX_KEY}`);
+                if (keytar) {
+                    await keytar.deletePassword(Globals.KEYTAR_SECRETS_KEY, `${regName}.${Globals.KEYTAR_SECRETS_ACCOUNT_USER_POSTFIX_KEY}`);
+                    await keytar.deletePassword(Globals.KEYTAR_SECRETS_KEY, `${regName}.${Globals.KEYTAR_SECRETS_ACCOUNT_PASSWORD_POSTFIX_KEY}`);
+                }
 
                 context.globalState.update(Globals.GLOBAL_STATE_REGS_KEY, nodesData);
-
-                if (isUserDeleted && isPassDeleted) {
-                    vscode.window.showInformationMessage(`Registry settings for '${regName}' successfully deleted.`);
-                }
+                vscode.window.showInformationMessage(`Registry settings for '${regName}' successfully deleted.`);
                 dockerRegistryExplorer.refresh();
             }
         }

@@ -32,8 +32,12 @@ export class PrivateDockerExplorerProvider implements vscode.TreeDataProvider<vs
                 for (let i = 0; i < nodesData.length; i++) {
                     const key = nodesData[i];
                     let url: URL = new URL(key);
-                    let user = await keytar.getPassword(Globals.KEYTAR_SECRETS_KEY, `${url}.${Globals.KEYTAR_SECRETS_ACCOUNT_USER_POSTFIX_KEY}`);
-                    let password = await keytar.getPassword(Globals.KEYTAR_SECRETS_KEY, `${url}.${Globals.KEYTAR_SECRETS_ACCOUNT_PASSWORD_POSTFIX_KEY}`);
+                    let user: string | null = null;
+                    let password: string | null = null;
+                    if (keytar) {
+                        user = await keytar.getPassword(Globals.KEYTAR_SECRETS_KEY, `${url}.${Globals.KEYTAR_SECRETS_ACCOUNT_USER_POSTFIX_KEY}`);
+                        password = await keytar.getPassword(Globals.KEYTAR_SECRETS_KEY, `${url}.${Globals.KEYTAR_SECRETS_ACCOUNT_PASSWORD_POSTFIX_KEY}`);
+                    }
                     chldrns.push(new RegistryNode(url.hostname, url.toString(), vscode.TreeItemCollapsibleState.Collapsed, url.toString(), user || '', password || '', this._onDidChangeTreeData));
                 }
 
