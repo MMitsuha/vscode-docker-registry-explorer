@@ -1,5 +1,11 @@
 # Change Log
 
+## 0.2.4 - 2026-04-24
+
+### Fixed
+- "Size unavailable" / empty expand on multi-arch images. For manifest lists / OCI indexes the registry returns a list of per-platform manifests (no `layers` field), which was previously treated as a malformed manifest. Now `getManifestV2` transparently follows the index: it picks a platform (preferring `linux/amd64`, then `linux/arm64`, then any usable linux entry) and re-fetches that image manifest, so both hover size and layer expansion work.
+- Unrecognized manifest shapes now log `schemaVersion`, `mediaType`, and top-level keys so a future registry quirk is diagnosable from the output channel.
+
 ## 0.2.3 - 2026-04-24
 
 ### Fixed
